@@ -51,45 +51,35 @@ where
     let name = &demangle(&e.name).name;
 
     // Compute pipeline creation has few parameters and can be generated.
-    let pipeline_name = Ident::new(&format!("create_{name}_pipeline"), Span::call_site());
-
-    // The entry name string itself should remain mangled to match the WGSL code.
-    let entry_point = &e.name;
+    let function_name = Ident::new(&format!("{name}_descriptor"), Span::call_site());
 
     // TODO: Include a user supplied module name in the label?
     let label = format!("Compute Pipeline {name}");
 
-    if !module.overrides.is_empty() {
-        quote! {
-            pub fn #pipeline_name(device: &wgpu::Device, overrides: &super::OverrideConstants) -> wgpu::ComputePipeline {
-                let module = super::create_shader_module(device);
-                let layout = super::create_pipeline_layout(device);
-                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                    label: Some(#label),
-                    layout: Some(&layout),
-                    module: &module,
-                    entry_point: Some(#entry_point),
-                    compilation_options: wgpu::PipelineCompilationOptions {
-                        constants: &overrides.constants(),
-                        ..Default::default()
-                    },
-                    cache: Default::default(),
-                })
+    // The entry name string itself should remain mangled to match the WGSL code.
+    let entry_point = &e.name;
+
+    let (compilations_options, compilations_options_arg) = if !module.overrides.is_empty() {
+        let options = quote! {
+            wgpu::PipelineCompilationOptions {
+                constants: &overrides.constants(),
+                ..Default::default()
             }
-        }
+        };
+        (options, quote! { overrides: &super::OverrideConstants, })
     } else {
-        quote! {
-            pub fn #pipeline_name(device: &wgpu::Device) -> wgpu::ComputePipeline {
-                let module = super::create_shader_module(device);
-                let layout = super::create_pipeline_layout(device);
-                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                    label: Some(#label),
-                    layout: Some(&layout),
-                    module: &module,
-                    entry_point: Some(#entry_point),
-                    compilation_options: Default::default(),
-                    cache: Default::default(),
-                })
+        (quote! { Default::default() }, quote! {})
+    };
+
+    quote! {
+        pub fn #function_name<'a>(module: &'a wgpu::ShaderModule, #compilations_options_arg) -> wgpu::ComputePipelineDescriptor<'a> {
+            wgpu::ComputePipelineDescriptor {
+                label: Some(#label),
+                layout: None,
+                module,
+                entry_point: Some(#entry_point),
+                compilation_options: #compilations_options,
+                cache: Default::default(),
             }
         }
     }
