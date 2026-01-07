@@ -32,6 +32,17 @@ where
     } else {
         quote! {
             pub mod compute {
+                pub fn empty_descriptor<'a>(module: &'a wgpu::ShaderModule) -> wgpu::ComputePipelineDescriptor<'a> {
+                    wgpu::ComputePipelineDescriptor {
+                        label: None,
+                        layout: None,
+                        module,
+                        entry_point: None,
+                        compilation_options: Default::default(),
+                        cache: None,
+                    }
+                }
+
                 #(#entry_points)*
             }
         }
@@ -51,7 +62,7 @@ where
     let name = &demangle(&e.name).name;
 
     // Compute pipeline creation has few parameters and can be generated.
-    let function_name = Ident::new(&format!("{name}_descriptor"), Span::call_site());
+    let function_name = Ident::new(&format!("create_{name}_pipeline"), Span::call_site());
 
     // TODO: Include a user supplied module name in the label?
     let label = format!("Compute Pipeline {name}");
@@ -72,15 +83,17 @@ where
     };
 
     quote! {
-        pub fn #function_name<'a>(module: &'a wgpu::ShaderModule, #compilations_options_arg) -> wgpu::ComputePipelineDescriptor<'a> {
-            wgpu::ComputePipelineDescriptor {
-                label: Some(#label),
-                layout: None,
-                module,
+        pub fn #function_name(device: &wgpu::Device, desc: &wgpu::ComputePipelineDescriptor, #compilations_options_arg) -> wgpu::ComputePipeline {
+            let layout = desc.layout.is_none().then(|| super::create_pipeline_layout(device));
+
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: desc.label.or(Some(#label)),
+                layout: desc.layout.or(layout.as_ref()),
+                module: desc.module,
                 entry_point: Some(#entry_point),
                 compilation_options: #compilations_options,
-                cache: Default::default(),
-            }
+                cache: desc.cache,
+            })
         }
     }
 }
