@@ -85,9 +85,7 @@ pub enum CreateModuleError {
 
     /// The shader source could not be parsed.
     #[error("failed to parse: {error}")]
-    ParseError {
-        error: naga::front::wgsl::ParseError,
-    },
+    ParseError { error: naga::front::wgsl::ParseError },
 
     /// The shader source could not be validated.
     #[error("failed to validate: {error}")]
@@ -112,9 +110,7 @@ impl CreateModuleError {
     pub fn emit_to_stderr_with_path(&self, wgsl_source: &str, path: impl AsRef<Path>) {
         let path = path.as_ref();
         match self {
-            CreateModuleError::ParseError { error } => {
-                error.emit_to_stderr_with_path(wgsl_source, path)
-            }
+            CreateModuleError::ParseError { error } => error.emit_to_stderr_with_path(wgsl_source, path),
             CreateModuleError::ValidationError { error } => {
                 let path = path.to_string_lossy();
                 error.emit_to_stderr_with_path(wgsl_source, &path)
@@ -140,9 +136,7 @@ impl CreateModuleError {
     pub fn emit_to_string_with_path(&self, wgsl_source: &str, path: impl AsRef<Path>) -> String {
         let path = path.as_ref();
         match self {
-            CreateModuleError::ParseError { error } => {
-                error.emit_to_string_with_path(wgsl_source, path)
-            }
+            CreateModuleError::ParseError { error } => error.emit_to_string_with_path(wgsl_source, path),
             CreateModuleError::ValidationError { error } => {
                 let path = path.to_string_lossy();
                 error.emit_to_string_with_path(wgsl_source, &path)
@@ -438,10 +432,7 @@ impl Module {
 
     fn get_module<'a>(&'a mut self, parents: &[String]) -> &'a mut Module {
         if let Some((name, remaining)) = parents.split_first() {
-            self.submodules
-                .entry(name.clone())
-                .or_default()
-                .get_module(remaining)
+            self.submodules.entry(name.clone()).or_default().get_module(remaining)
         } else {
             self
         }
@@ -520,8 +511,8 @@ impl Module {
         F: Fn(&str) -> TypePath + Clone,
     {
         let demangle = demangle_with_root(demangle, root_path.clone());
-        let module = naga::front::wgsl::parse_str(wgsl_source)
-            .map_err(|error| CreateModuleError::ParseError { error })?;
+        let module =
+            naga::front::wgsl::parse_str(wgsl_source).map_err(|error| CreateModuleError::ParseError { error })?;
 
         if let Some(options) = options.validate.as_ref() {
             naga::valid::Validator::new(ValidationFlags::all(), options.capabilities)
@@ -566,7 +557,7 @@ impl Module {
             })
             .collect();
 
-        let immediate_size = immediate_data_size(&module).unwrap_or(quote!(0));
+        let _immediate_size = immediate_data_size(&module).unwrap_or(quote!(0));
 
         let create_pipeline_layout = quote! {
             pub fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
@@ -575,7 +566,7 @@ impl Module {
                     bind_group_layouts: &[
                         #(&#bind_group_layouts),*
                     ],
-                    immediate_size: #immediate_size,
+                    push_constant_ranges: &[],
                 })
             }
         };
@@ -628,7 +619,7 @@ fn immediate_data_size(module: &naga::Module) -> Option<TokenStream> {
     let (_, global) = module
         .global_variables
         .iter()
-        .find(|(_, g)| g.space == naga::AddressSpace::Immediate)?;
+        .find(|(_, g)| g.space == naga::AddressSpace::PushConstant)?;
 
     let size = module.types[global.ty].inner.size(module.to_ctx());
 
@@ -725,10 +716,7 @@ mod test {
     #[macro_export]
     macro_rules! assert_tokens_eq {
         ($a:expr, $b:expr) => {
-            pretty_assertions::assert_eq!(
-                $crate::pretty_print_rustfmt($a),
-                $crate::pretty_print_rustfmt($b)
-            )
+            pretty_assertions::assert_eq!($crate::pretty_print_rustfmt($a), $crate::pretty_print_rustfmt($b))
         };
     }
 
@@ -800,7 +788,7 @@ mod test {
     #[test]
     fn create_shader_module_compute_overrides() {
         let source = indoc! {r#"
-            struct Uniforms { 
+            struct Uniforms {
                 color_rgb: vec3<f32>,
             }
 
@@ -851,8 +839,7 @@ mod test {
     #[test]
     fn create_shader_modules_source() {
         let source = "@fragment fn main() {}";
-        let actual =
-            create_shader_modules(source, WriteOptions::default(), demangle_identity).unwrap();
+        let actual = create_shader_modules(source, WriteOptions::default(), demangle_identity).unwrap();
         assert_rust_snapshot!(actual);
     }
 
@@ -904,10 +891,7 @@ mod test {
         "#};
 
         let result = create_shader_module(source, "shader.wgsl", WriteOptions::default());
-        assert!(matches!(
-            result,
-            Err(CreateModuleError::NonConsecutiveBindGroups)
-        ));
+        assert!(matches!(result, Err(CreateModuleError::NonConsecutiveBindGroups)));
     }
 
     #[test]
@@ -1085,10 +1069,7 @@ mod test {
             },
         );
 
-        assert!(matches!(
-            result,
-            Err(CreateModuleError::ValidationError { .. })
-        ));
+        assert!(matches!(result, Err(CreateModuleError::ValidationError { .. })));
     }
 
     fn demangle_underscore(name: &str) -> TypePath {
